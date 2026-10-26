@@ -15,10 +15,10 @@
   <a href="#connection" class="navlink">◉ <span>Подключение к принтеру</span></a>
   <a href="#experiment" class="navlink">⌁ <span>Экспериментальная выгрузка</span></a>
   <a href="#history" class="navlink">▤ <span>История операций</span></a>
-  <div class="sidebar-bottom"><div class="dotline"><span id="sideDot" class="dot muted"></span><span id="sideStatus">Расчёт офлайн</span></div><p>Неофициальный исследовательский инструмент. Непрерывная перемотка не реализована.</p><small>v0.2.0 · H2S / P2S / X2D</small></div>
+  <div class="sidebar-bottom"><div class="dotline"><span id="sideDot" class="dot muted"></span><span id="sideStatus">Расчёт офлайн</span></div><p>Неофициальный исследовательский инструмент. Непрерывная перемотка не реализована.</p><small>v0.3.0 · H2S / P2S / X2D</small></div>
  </aside>
  <main class="main">
-  <header class="header"><div><div class="eyebrow">ПРОЕКТ / AMS 2 PRO</div><h1>Перемотка филамента <span class="text-dim">без догадок</span></h1><p>Оценка метража, заполнения катушки и контролируемый эксперимент с AMS.</p></div><span class="top-tag">RESEARCH BUILD <b>0.2.0</b></span></header>
+  <header class="header"><div><div class="eyebrow">ПРОЕКТ / AMS 2 PRO</div><h1>Перемотка филамента <span class="text-dim">без догадок</span></h1><p>Оценка метража, заполнения катушки и контролируемый эксперимент с AMS.</p></div><span class="top-tag">RESEARCH BUILD <b>0.3.0</b></span></header>
   <div class="notice"><strong>Важное ограничение</strong><p>AMS автоматически наматывает пруток при выгрузке, но публично подтверждённого режима непрерывного вращения на заданную массу нет. Приложение <b>не может</b> измерить фактическую намотку и не должно работать без оператора у принтера.</p></div>
 
   <section id="calculator" class="section">
@@ -50,25 +50,33 @@
     <details id="manualConnection"><summary>Ручное подключение (если поиск не сработал)</summary>
       <div class="fieldrow"><div class="field"><label for="host">IP принтера</label><input id="host" type="text" placeholder="192.168.1.120" autocomplete="off" spellcheck="false"></div><div class="field"><label for="serial">Серийный номер SN</label><input id="serial" type="text" placeholder="С экрана принтера" autocomplete="off" spellcheck="false"></div></div>
     </details>
-    <div class="field"><label for="accessCode">LAN Access Code</label><input id="accessCode" type="password" placeholder="Код локального доступа" autocomplete="off"></div>
+    <div class="field"><label for="accessCode">LAN Access Code</label><input id="accessCode" type="password" placeholder="Код доступа или оставь пустым для сохранённого" autocomplete="off"></div>
+    <div class="checks"><label><input id="rememberCode" type="checkbox" checked><span>Запомнить код для этого принтера (шифрование Windows DPAPI)</span></label></div>
+    <div class="actions"><button id="forgetCode" class="outline-btn" type="button">Забыть сохранённый код</button><span id="savedCodeStatus" class="quiet">Код не проверен</span></div>
     <div class="actions"><button id="connect" class="primary-btn">Подключиться</button><button id="disconnect" class="outline-btn">Отключиться</button></div>
-    <p class="helper">LAN Only и Developer Mode должны быть включены. Поиск использует локальный UDP 2021. Код передаётся только локальному мосту и не сохраняется в истории.</p></div>
-    <div class="panel"><div class="panel-title">Телеметрия принтера</div><div class="details"><div><span>Состояние печати</span><strong id="gcodeState">—</strong></div><div><span>AMS статус</span><strong id="amsStatus">—</strong></div><div><span>Активный лоток</span><strong id="trayNow">—</strong></div><div><span>Давность ответа</span><strong id="telemetryAge">—</strong></div><div><span>Последняя команда</span><strong id="lastCommand">—</strong></div></div><p id="bridgeMessage" class="helper">Открой приложение с локального сервера на Windows для управления. Офлайн-расчёт доступен без подключения.</p></div>
+    <p class="helper">Включи LAN Mode и Developer Mode. Поиск UDP 2021. Сохранённый код шифруется текущим пользователем Windows и не передаётся в браузер. Для Android нужен запущенный Windows-мост.</p></div>
+    <div class="panel"><div class="panel-title">Телеметрия принтера</div><div class="details"><div><span>Состояние печати</span><strong id="gcodeState">—</strong></div><div><span>AMS статус</span><strong id="amsStatus">—</strong></div><div><span>Активный лоток</span><strong id="trayNow">—</strong></div><div><span>Давность ответа</span><strong id="telemetryAge">—</strong></div><div><span>Последняя команда</span><strong id="lastCommand">—</strong></div></div><p id="bridgeMessage" class="helper">Сначала подключись к Windows-мосту. Офлайн-расчёт доступен без принтера.</p>
+      <div class="panel-title">Что нужно для работы</div><div id="connectionSteps" aria-live="polite" class="events">1. Найти принтер. 2. Ввести код. 3. Дождаться телеметрии. 4. Проверить AMS.</div></div>
    </div>
   </section>
 
   <section id="experiment" class="section"><div class="section-head"><div><span class="eyebrow">03 / ЛАБОРАТОРНЫЙ РЕЖИМ</span><h2>Проверка штатной выгрузки</h2></div><span class="status-pill warning">Эксперимент</span></div>
    <div class="panel lab"><div class="lab-header"><div class="lab-mark">!</div><div><strong>Не подключай спаянные катушки на первом тесте</strong><p>Эта операция отправляет единственную штатную команду «выгрузить филамент». Она не запускает длительную перемотку и не гарантирует движение катушки.</p></div></div>
     <div class="fieldrow"><div class="field"><label for="unit">Номер AMS (начиная с 0)</label><select id="unit"><option value="0">AMS 0</option><option value="1">AMS 1</option><option value="2">AMS 2</option><option value="3">AMS 3</option></select></div><div class="field"><label for="slot">Слот AMS</label><select id="slot"><option value="0">1</option><option value="1">2</option><option value="2">3</option><option value="3">4</option></select></div></div>
-    <div class="field"><label for="unloadMethod">Штатный вариант команды</label><select id="unloadMethod"><option value="ams_change_filament">ams_change_filament (Bambu Studio)</option><option value="unload_filament">unload_filament (возможна несовместимость)</option></select></div>
+    <div class="field"><label for="unloadMethod">Команда выгрузки</label><select id="unloadMethod"><option value="unload_filament">unload_filament — одна штатная выгрузка</option></select></div>
     <div class="checks"><label><input id="noSplice" type="checkbox"><span>Проверяю на одной обычной катушке, <b>без спайки</b> с внешней катушкой</span></label><label><input id="atPrinter" type="checkbox"><span>Нахожусь рядом с принтером, могу физически остановить процесс</span></label></div>
-    <div class="actions"><button id="unload" class="danger-btn" disabled>Отправить ОДНУ выгрузку</button><span class="quiet">Повторная отправка только вручную</span></div>
-    <p class="helper" id="unloadReason">Требуются подключение, свежая телеметрия, состояние IDLE/FINISH, активный слот AMS и два подтверждения.</p>
+    <div class="actions"><button id="refreshTelemetry" class="outline-btn" type="button">Запросить статус принтера</button><button id="checkUnload" class="outline-btn" type="button">Проверить готовность</button><button id="unload" class="danger-btn" disabled>Отправить ОДНУ выгрузку</button></div>
+    <p class="helper" id="unloadReason">Выбери AMS и слот, затем нажми «Проверить готовность».</p><div id="unloadChecks" class="events" aria-live="polite"></div>
     <div class="lab-footer">Важно: отключение MQTT не гарантирует остановку уже выполняемой механической операции. При заедании действуй по инструкции принтера; не оставляй механизм без наблюдения.</div>
    </div>
   </section>
 
-  <section id="history" class="section"><div class="section-head"><div><span class="eyebrow">04 / ПЛАНЫ И ЖУРНАЛ</span><h2>История операций</h2></div><button id="clearHistory" class="ghost-btn">Очистить планы</button></div><div class="panel"><div id="plans" class="plan-list"><p class="muted-small">Планы ещё не добавлены.</p></div><div class="divider"></div><div class="panel-title">События подключения</div><div id="events" class="events">Нет событий</div><p class="helper">Сохраняются только локальные планы (без IP, пароля и SN). События MQTT существуют лишь пока открыт сервер.</p></div></section>
+  <section id="history" class="section"><div class="section-head"><div><span class="eyebrow">04 / ПЛАНЫ И ЖУРНАЛ</span><h2>История операций</h2></div><button id="clearHistory" class="ghost-btn">Очистить планы</button></div><div class="panel"><div class="panel-title">Активный план — ручной учёт выполненной перемотки</div>
+   <div id="activePlan" class="helper">Выбери «В работу» у сохранённого плана.</div>
+   <div class="fieldrow"><div class="field"><label for="actualGrams">Фактически перемотано, г (измерить весами)</label><input id="actualGrams" type="number" min="0" step="1" value="0"></div><div class="field"><label for="planNote">Заметки</label><input id="planNote" type="text" maxlength="100" placeholder="Проверка, материал, катушка"></div></div>
+   <div class="actions"><button id="recordPlan" class="outline-btn">Записать результат</button><button id="completePlan" class="primary-btn">Завершить план</button><button id="cancelPlan" class="ghost-btn">Остановить учёт</button></div>
+   <p class="helper">План контролирует расчёт и ручной журнал, но НЕ включает мотор AMS, не измеряет метры и не управляет длительной намоткой.</p><div class="divider"></div>
+   <div id="plans" class="plan-list"><p class="muted-small">Планы ещё не добавлены.</p></div><div class="divider"></div><div class="panel-title">События подключения</div><div id="events" class="events">Нет событий</div><p class="helper">Сохраняются только локальные планы (без IP, пароля и SN). События MQTT существуют лишь пока открыт сервер.</p></div></section>
   <footer>AMS 2 PRO REWINDER · Open research prototype · Неофициальный проект, не связан с Bambu Lab.</footer>
  </main>
 </div>
