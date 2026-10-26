@@ -1,0 +1,137 @@
+name: Build and publish AMS Rewinder v0.1.0
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ams-rewinder-v0.1.0
+  cancel-in-progress: false
+
+jobs:
+  source-import:
+    runs-on: ubuntu-latest
+    outputs:
+      source_sha: ${{ steps.sync.outputs.source_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Restore verified source archive
+        shell: bash
+        run: |
+          python - <<'PY'
+          import base64, hashlib, io, lzma, pathlib, tarfile
+          root=pathlib.Path('.')
+          pieces=sorted((root/'bootstrap').glob('source.part*.txt'))
+          if pieces:
+              compressed=base64.b64decode(''.join(p.read_text(encoding='ascii').strip() for p in pieces),validate=True)
+              expected='82dd435180f118906eb275b8f697919d3d061b5e4ae977ef05fa96be33638074'
+              assert hashlib.sha256(compressed).hexdigest()==expected, 'Source archive SHA-256 mismatch'
+              data=lzma.decompress(compressed)
+              with tarfile.open(fileobj=io.BytesIO(data),mode='r:') as tar:
+                  for item in tar.getmembers():
+                      path=pathlib.PurePosixPath(item.name)
+                      if path.is_absolute() or '..' in path.parts or item.issym() or item.islnk():
+                          raise RuntimeError('Unsafe archive path')
+                  tar.extractall(root,filter='data')
+          assert (root/'app.py').is_file(), 'Source files were not imported'
+          assert (root/'android-source/app/build.gradle').is_file(), 'Android sources missing'
+          PY
+      - name: Commit expanded source files
+        id: sync
+        shell: bash
+        run: |
+          rm -rf bootstrap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "Import AMS 2 Pro Rewinder v0.1.0 application source"
+            git push origin HEAD:main
+          fi
+          echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Test application
+        run: python -m unittest discover -s tests -v
+
+  windows:
+    needs: source-import
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.source-import.outputs.source_sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Package Windows executable
+        shell: pwsh
+        run: |
+          pip install pyinstaller==6.11.1
+          pyinstaller --clean --noconfirm --onefile --name AMS2ProRewinder --add-data "web;web" app.py
+          New-Item -ItemType Directory -Force release | Out-Null
+          Copy-Item dist/AMS2ProRewinder.exe release/AMS2ProRewinder-Windows-x64.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AMS2ProRewinder-Windows
+          path: release/AMS2ProRewinder-Windows-x64.exe
+          if-no-files-found: error
+
+  android:
+    needs: source-import
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.source-import.outputs.source_sha }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Build Android debug APK
+        run: |
+          gradle -p android-source assembleDebug --no-daemon
+          mkdir -p release
+          cp android-source/app/build/outputs/apk/debug/app-debug.apk release/AMS2ProRewinder-Android-debug.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AMS2ProRewinder-Android
+          path: release/AMS2ProRewinder-Android-debug.apk
+          if-no-files-found: error
+
+  release:
+    needs: [source-import, windows, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.source-import.outputs.source_sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: AMS2ProRewinder-*
+          path: release
+          merge-multiple: true
+      - name: Publish experimental release with Windows and Android binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s release/AMS2ProRewinder-Windows-x64.exe
+          test -s release/AMS2ProRewinder-Android-debug.apk
+          if gh release view v0.1.0 >/dev/null 2>&1; then
+            gh release upload v0.1.0 release/AMS2ProRewinder-Windows-x64.exe release/AMS2ProRewinder-Android-debug.apk --clobber
+          else
+            gh release create v0.1.0 release/AMS2ProRewinder-Windows-x64.exe release/AMS2ProRewinder-Android-debug.apk \
+              --target "${{ needs.source-import.outputs.source_sha }}" \
+              --title "AMS 2 Pro Rewinder Lab v0.1.0" --notes-file RELEASE_NOTES.md --prerelease
+          fi
