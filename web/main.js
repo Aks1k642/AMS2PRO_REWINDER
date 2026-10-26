@@ -193,6 +193,15 @@
     }catch(e){$('bridgeMessage').textContent='Сервер недоступен: '+e.message;lastState=null;lastCheck=null;validateUnload();}
   }
   $('checkUnload').addEventListener('click',checkUnload);
+  $('refreshTelemetry').addEventListener('click',async()=>{
+    const button=$('refreshTelemetry');button.disabled=true;
+    try{
+      const data=await api('refresh-status',{});
+      toast(data.message||'Запрос состояния отправлен.');
+      await refresh();
+    }catch(e){toast(e.message,true);}
+    finally{button.disabled=false;}
+  });
   $('connect').addEventListener('click',async()=>{const button=$('connect');button.disabled=true;try{const manual=$('manualConnection').open;const deviceId=$('devices').value;
     if(!manual&&!deviceId)throw Error('Сначала нажми «Найти принтеры» и выбери устройство либо открой ручной режим.');
     const cfg={model:$('model').value,access_code:$('accessCode').value,
@@ -217,5 +226,5 @@
   ['unit','slot'].forEach(id=>$(id).addEventListener('change',checkUnload));
   ['noSplice','atPrinter'].forEach(id=>$(id).addEventListener('change',validateUnload));
   document.querySelectorAll('a.navlink').forEach(link=>link.addEventListener('click',e=>{e.preventDefault();document.querySelector(link.getAttribute('href'))?.scrollIntoView({behavior:'smooth'});document.querySelectorAll('a.navlink').forEach(x=>x.classList.toggle('active',x===link));}));
-  estimate();drawPlans();validateUnload();refresh();if(!token){$('discover').disabled=true;$('checkUnload').disabled=true;$('forgetCode').disabled=true;$('discoveryMessage').textContent='Автономный режим: для поиска принтеров открой приложение через Windows LAN-мост.';}else{setInterval(refresh,3000);}
+  estimate();drawPlans();validateUnload();refresh();if(!token){$('discover').disabled=true;$('checkUnload').disabled=true;$('refreshTelemetry').disabled=true;$('forgetCode').disabled=true;$('discoveryMessage').textContent='Автономный режим: для поиска принтеров открой приложение через Windows LAN-мост.';}else{setInterval(refresh,3000);}
 })();
