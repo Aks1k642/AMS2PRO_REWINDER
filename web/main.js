@@ -6,6 +6,9 @@
   const format = (n, digits=1) => new Intl.NumberFormat('ru-RU',{maximumFractionDigits:digits,minimumFractionDigits:digits}).format(n);
   let plans = [];
   let lastState = null;
+  let lastCheck = null;
+  let lastCheckAt = 0;
+  let activePlanId = null;
   let token = new URLSearchParams(location.hash.slice(1)).get('token') || '';
   try { plans = JSON.parse(localStorage.getItem('ams-rewinder-plans') || '[]'); if(!Array.isArray(plans)) plans=[]; } catch { plans=[]; }
   let toastTimeout;
@@ -27,17 +30,73 @@
     $('savePlan').disabled=!valid;
     return valid?{material:$('material').value,density,dia,grams,before,capacity,metres,fill}:null;
   }
-  function savePlans(){try{localStorage.setItem('ams-rewinder-plans',JSON.stringify(plans))}catch{toast('Не удалось сохранить в браузере',true)}drawPlans();}
-  function drawPlans(){const root=$('plans');root.replaceChildren();if(!plans.length){const p=document.createElement('p');p.className='muted-small';p.textContent='Планов пока нет.';root.append(p);return;}
-    plans.forEach((x,i)=>{const row=document.createElement('div');row.className='plan';const content=document.createElement('div');const strong=document.createElement('strong');strong.textContent=`${format(x.grams,0)} г · ${x.material} · ${format(x.metres)} м`;const small=document.createElement('small');small.textContent=`${x.date} · Ø${x.dia} мм · заполнение ${format(x.fill,0)}% · план, не фактическая перемотка`;content.append(strong,small);const btn=document.createElement('button');btn.textContent='Удалить';btn.addEventListener('click',()=>{plans.splice(i,1);savePlans()});row.append(content,btn);root.append(row);});}
+  function savePlans(){
+    try{localStorage.setItem('ams-rewinder-plans',JSON.stringify(plans));}
+    catch{toast('Не удалось сохранить план в браузере',true);}
+    drawPlans();
+  }
+  function refreshActivePlan(){
+    const plan=plans.find(x=>x.id===activePlanId);
+    const root=$('activePlan');
+    if(!plan){root.textContent='Выбери «В работу» у сохранённого плана.';}
+    else{
+      const progress=Math.max(0,Number(plan.actualGrams)||0);
+      root.textContent=plan.material+' · цель '+format(plan.grams,0)+' г ('+format(plan.metres)+' м). Факт по весам: '+format(progress,0)+' г. '+format(progress/plan.grams*100,0)+'% цели. Статус: '+(plan.state||'planned')+'. Это ручной учёт, не телеметрия AMS.';
+      $('actualGrams').value=progress;
+      $('planNote').value=plan.note||'';
+    }
+    ['recordPlan','completePlan','cancelPlan'].forEach(id=>$(id).disabled=!plan);
+  }
+  function drawPlans(){
+    const root=$('plans');root.replaceChildren();
+    if(!plans.length){const p=document.createElement('p');p.className='muted-small';p.textContent='Планов пока нет.';root.append(p);}
+    plans.forEach((x,i)=>{
+      if(!x.id)x.id=String(Date.now())+'-'+String(i);
+      const row=document.createElement('div');row.className='plan';
+      const content=document.createElement('div');const strong=document.createElement('strong');
+      strong.textContent=`${format(x.grams,0)} г · ${x.material} · ${format(x.metres)} м`;
+      const small=document.createElement('small');
+      small.textContent=`${x.date} · ${x.state||'planned'} · факт ${format(Number(x.actualGrams)||0,0)} г · план без автоматической перемотки`;
+      content.append(strong,small);
+      const start=document.createElement('button');start.type='button';start.textContent='В работу';
+      start.addEventListener('click',()=>{
+        const prior=plans.find(p=>p.id===activePlanId);
+        if(prior&&prior.state==='in_progress')prior.state='paused';
+        activePlanId=x.id;x.state='in_progress';savePlans();refreshActivePlan();
+        document.getElementById('activePlan').scrollIntoView({behavior:'smooth',block:'center'});
+      });
+      const remove=document.createElement('button');remove.type='button';remove.textContent='Удалить';
+      remove.addEventListener('click',()=>{if(x.id===activePlanId)activePlanId=null;plans.splice(i,1);savePlans();});
+      row.append(content,start,remove);root.append(row);
+    });
+    refreshActivePlan();
+  }
+  function writePlan(complete=false){
+    const plan=plans.find(x=>x.id===activePlanId);
+    if(!plan){toast('Сначала выбери план «В работу».',true);return;}
+    const actual=Number($('actualGrams').value);
+    if(!Number.isFinite(actual)||actual<0||actual>10000){toast('Введите реальное значение массы от 0 до 10000 г.',true);return;}
+    plan.actualGrams=actual;plan.note=$('planNote').value.slice(0,100);
+    plan.state=complete?'completed':'in_progress';
+    plan.updated=new Date().toLocaleString('ru-RU');
+    if(complete)activePlanId=null;
+    savePlans();toast(complete?'План завершён; фактическая масса записана.':'Фактическая масса записана (вручную).');
+  }
+  $('recordPlan').addEventListener('click',()=>writePlan(false));
+  $('completePlan').addEventListener('click',()=>writePlan(true));
+  $('cancelPlan').addEventListener('click',()=>{
+    const plan=plans.find(x=>x.id===activePlanId);
+    if(plan)plan.state='paused';
+    activePlanId=null;savePlans();toast('Учёт плана приостановлен. Управление мотором не выполнялось.');
+  });
   function escapeCSV(value){return '"'+String(value).replaceAll('"','""')+'"';}
   function exportCSV(){if(!plans.length){toast('Нет сохранённых планов');return;}const cols=['date','material','density','dia','grams','before','capacity','metres','fill'];const rows=[cols.join(';'),...plans.map(item=>cols.map(key=>escapeCSV(item[key])).join(';'))];const blob=new Blob(['\ufeff'+rows.join('\r\n')],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='ams_rewinder_plans.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
   $('material').addEventListener('change',()=>{if(densityTable[$('material').value])$('density').value=densityTable[$('material').value];estimate();});
   ['density','diameter','grams','starting','capacity'].forEach(id=>$(id).addEventListener('input',()=>{estimate();document.querySelectorAll('.chip').forEach(btn=>btn.classList.toggle('selected',Number(btn.dataset.grams)===number('grams')))}));
   document.querySelectorAll('.chip').forEach(btn=>btn.addEventListener('click',()=>{$('grams').value=btn.dataset.grams;document.querySelectorAll('.chip').forEach(b=>b.classList.toggle('selected',b===btn));estimate();}));
-  $('savePlan').addEventListener('click',()=>{const v=estimate();if(!v)return;plans.unshift({...v,date:new Date().toLocaleString('ru-RU')});plans=plans.slice(0,300);savePlans();toast('План добавлен в историю (без реального движения AMS).');});
+  $('savePlan').addEventListener('click',()=>{const v=estimate();if(!v)return;plans.unshift({...v,id:String(Date.now())+'-'+Math.random().toString(36).slice(2,8),state:'planned',actualGrams:0,note:'',date:new Date().toLocaleString('ru-RU')});plans=plans.slice(0,300);savePlans();toast('План добавлен в историю (без реального движения AMS).');});
   $('exportCsv').addEventListener('click',exportCSV);
-  $('clearHistory').addEventListener('click',()=>{if(confirm('Удалить все локальные планы?')){plans=[];savePlans();}});
+  $('clearHistory').addEventListener('click',()=>{if(confirm('Удалить все локальные планы?')){plans=[];activePlanId=null;savePlans();}});
   async function api(route,body){if(!token)throw Error('Нет токена локального сервера. Для управления запусти START_WINDOWS.cmd и открой выданную ссылку.');const c=new AbortController();const timer=setTimeout(()=>c.abort(),11000);try{const response=await fetch('/api/'+route,{method:body?'POST':'GET',headers:{'X-Session-Token':token,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),signal:c.signal,cache:'no-store'});const data=await response.json();if(!response.ok)throw Error(data.error||'HTTP '+response.status);return data;}finally{clearTimeout(timer);}}
   async function discoverDevices(){
     const button=$('discover'), selection=$('devices');
@@ -52,7 +111,8 @@
         const option=document.createElement('option');
         option.value=device.serial;
         option.dataset.model=device.model||'';
-        option.textContent=(device.name||'Bambu Lab')+' · '+device.host+(device.model?' · '+device.model:' · модель не определена');
+        option.dataset.saved=device.saved_code?'yes':'no';
+        option.textContent=(device.name||'Bambu Lab')+' · '+device.host+(device.model?' · '+device.model:' · модель не определена')+(device.saved_code?' · код сохранён':'');
         selection.append(option);
       }
       $('discoveryMessage').textContent=result.devices?.length
@@ -71,6 +131,8 @@
     const selected=$('devices').selectedOptions[0];
     if(selected?.dataset.model && ['H2S','P2S','X2D'].includes(selected.dataset.model))$('model').value=selected.dataset.model;
     if($('devices').value)$('manualConnection').open=false;
+    $('savedCodeStatus').textContent=selected?.dataset.saved==='yes'?'Код для этого SN уже сохранён':'Для этого SN код не найден';
+    $('accessCode').placeholder=selected?.dataset.saved==='yes'?'Оставь пустым для сохранённого кода':'Введи LAN Access Code';
   });
   const stateLabel=s=>({RUNNING:'Печатает',PREPARE:'Подготовка',IDLE:'Ожидание',FINISH:'Завершено',FAILED:'Ошибка',PAUSE:'Пауза',STOP:'Остановлен'})[String(s||'').toUpperCase()]||s||'—';
   function updateStatus(data){lastState=data;const t=data.status||{},active=data.connected;
