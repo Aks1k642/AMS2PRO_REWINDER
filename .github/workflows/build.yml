@@ -1,4 +1,4 @@
-name: Build and publish AMS Rewinder v0.1.0
+name: Build and publish AMS Rewinder v0.2.0
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: ams-rewinder-v0.1.0
+  group: ams-rewinder-v0.2.0
   cancel-in-progress: false
 
 jobs:
@@ -51,7 +51,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           if ! git diff --cached --quiet; then
-            git commit -m "Import AMS 2 Pro Rewinder v0.1.0 application source"
+            git commit -m "Import AMS 2 Pro Rewinder v0.2.0 application source"
             git push origin HEAD:main
           fi
           echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -139,10 +139,10 @@ jobs:
           set -euo pipefail
           test -s release/AMS2ProRewinder-Windows-x64.exe
           test -s release/AMS2ProRewinder-Android-debug.apk
-          if gh release view v0.1.0 >/dev/null 2>&1; then
-            gh release upload v0.1.0 release/AMS2ProRewinder-Windows-x64.exe release/AMS2ProRewinder-Android-debug.apk --clobber
+          if gh release view v0.2.0 >/dev/null 2>&1; then
+            gh release upload v0.2.0 release/AMS2ProRewinder-Windows-x64.exe release/AMS2ProRewinder-Android-debug.apk --clobber
           else
-            gh release create v0.1.0 release/AMS2ProRewinder-Windows-x64.exe release/AMS2ProRewinder-Android-debug.apk \
+            gh release create v0.2.0 release/AMS2ProRewinder-Windows-x64.exe release/AMS2ProRewinder-Android-debug.apk \
               --target "${{ needs.source-import.outputs.source_sha }}" \
-              --title "AMS 2 Pro Rewinder Lab v0.1.0" --notes-file RELEASE_NOTES.md --prerelease
+              --title "AMS 2 Pro Rewinder Lab v0.2.0" --notes-file RELEASE_NOTES_V0.2.0.md --prerelease
           fi
