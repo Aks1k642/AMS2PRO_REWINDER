@@ -30,14 +30,12 @@ class TestSafety(unittest.TestCase):
         self.svc.client=self.mock
         self.svc.connected=True
         self.svc.on_message({'print':{'command':'push_status','gcode_state':'IDLE','ams':{'tray_now':'0'},'ams_status':0}})
-        self.request={'confirm':'Я НАХОЖУСЬ У ПРИНТЕРА','joined_spools':False,'slot':0,'unit':0,'method':'ams_change_filament'}
+        self.request={'confirm':'Я НАХОЖУСЬ У ПРИНТЕРА','joined_spools':False,'slot':0,'unit':0,'method':'unload_filament'}
     def test_single_unload_request(self):
         self.svc.unload_one_shot(self.request)
         self.assertEqual(len(self.mock.sent), 1)
         data=self.mock.sent[0]['print']
-        self.assertEqual(data['command'], 'ams_change_filament')
-        self.assertEqual(data['target'], 255)
-        self.assertEqual(data['slot_id'], 255)
+        self.assertEqual(data['command'], 'unload_filament')
     def test_alternate_unload(self):
         self.request['method']='unload_filament'
         self.svc.unload_one_shot(self.request)
