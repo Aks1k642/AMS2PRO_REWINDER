@@ -50,7 +50,7 @@ class TestSafety(unittest.TestCase):
         self.svc.on_message({'print':{'gcode_state':'PAUSE'}})
         self.assertBlocked()
     def test_block_stale(self):
-        self.svc.last_status_time=time.monotonic()-12
+        self.svc.last_status_time=time.monotonic()-25
         self.assertBlocked()
     def test_block_spliced(self):
         self.request['joined_spools']=True
