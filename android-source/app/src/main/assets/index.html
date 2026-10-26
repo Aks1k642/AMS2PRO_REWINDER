@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#151319"><meta name="description" content="AMS 2 Pro Rewinder: расчёт и экспериментальная штатная выгрузка через локальный LAN MQTT">
+<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="styles.css"><title>AMS 2 Pro Rewinder</title>
+</head>
+<body>
+<div class="shell">
+ <aside class="sidebar">
+  <div class="brand"><span class="brand-icon">↻</span><div><strong>AMS 2 Pro</strong><small>REWINDER · LAB</small></div></div>
+  <div class="side-label">ПАНЕЛЬ УПРАВЛЕНИЯ</div>
+  <a href="#calculator" class="navlink active">◫ <span>Расчёт перемотки</span></a>
+  <a href="#connection" class="navlink">◉ <span>Подключение к принтеру</span></a>
+  <a href="#experiment" class="navlink">⌁ <span>Экспериментальная выгрузка</span></a>
+  <a href="#history" class="navlink">▤ <span>История операций</span></a>
+  <div class="sidebar-bottom"><div class="dotline"><span id="sideDot" class="dot muted"></span><span id="sideStatus">Расчёт офлайн</span></div><p>Неофициальный исследовательский инструмент. Непрерывная перемотка не реализована.</p><small>v0.1.0 · H2S / P2S / X2D</small></div>
+ </aside>
+ <main class="main">
+  <header class="header"><div><div class="eyebrow">ПРОЕКТ / AMS 2 PRO</div><h1>Перемотка филамента <span class="text-dim">без догадок</span></h1><p>Оценка метража, заполнения катушки и контролируемый эксперимент с AMS.</p></div><span class="top-tag">RESEARCH BUILD <b>0.1.0</b></span></header>
+  <div class="notice"><strong>Важное ограничение</strong><p>AMS автоматически наматывает пруток при выгрузке, но публично подтверждённого режима непрерывного вращения на заданную массу нет. Приложение <b>не может</b> измерить фактическую намотку и не должно работать без оператора у принтера.</p></div>
+
+  <section id="calculator" class="section">
+   <div class="section-head"><div><span class="eyebrow">01 / ПЛАНИРОВАНИЕ</span><h2>Калькулятор перемотки</h2></div><span class="quiet">Филамент Ø 1,75 мм</span></div>
+   <div class="two-cols">
+    <div class="panel"><div class="panel-title">Параметры материала</div>
+     <div class="field"><label for="material">Тип пластика</label><select id="material"><option value="PLA">PLA</option><option value="PETG">PETG</option><option value="ABS">ABS</option><option value="ASA">ASA</option><option value="TPU">TPU</option><option value="PA">PA / Nylon</option><option value="PC">PC</option><option value="custom">Другая плотность</option></select></div>
+     <div class="fieldrow"><div class="field"><label for="density">Плотность, г/см³</label><input id="density" type="number" min="0.7" max="2.5" step="0.01" value="1.24"></div><div class="field"><label for="diameter">Диаметр, мм</label><input id="diameter" type="number" min="1" max="4" step="0.01" value="1.75"></div></div>
+     <div class="field"><label for="grams">Сколько перемотать, грамм</label><div class="input-unit"><input id="grams" type="number" min="1" max="10000" step="1" value="500"><span>г</span></div></div>
+     <div class="chips"><button class="chip" data-grams="100">100 г</button><button class="chip" data-grams="250">250 г</button><button class="chip selected" data-grams="500">500 г</button><button class="chip" data-grams="750">750 г</button><button class="chip" data-grams="1000">1 кг</button></div>
+     <div class="fieldrow"><div class="field"><label for="starting">Уже есть на целевой, г</label><input id="starting" type="number" min="0" max="10000" value="0"></div><div class="field"><label for="capacity">Вместимость катушки, г</label><input id="capacity" type="number" min="1" max="10000" value="1000"></div></div>
+    </div>
+    <div class="panel estimate"><div class="panel-title">Расчётные значения</div>
+     <div class="big-val"><span id="metres">167,7</span><span>метров</span></div><p class="muted-small">Теоретическая длина филамента для выбранной массы</p>
+     <div class="calc-grid"><div><small>Масса одного метра</small><strong id="gpm">2,98 г</strong></div><div><small>Целевая масса</small><strong id="totalWeight">500 г</strong></div></div>
+     <div class="gauge-row"><span>Заполнение принимающей катушки</span><strong id="fillLabel">50%</strong></div><div class="gauge"><div id="fillBar"></div></div><p id="overfill" class="helper">Расчёт без поправок на разброс диаметра и плотности.</p>
+     <div class="calc-actions"><button id="savePlan" class="primary-btn">+ Сохранить план</button><button id="exportCsv" class="outline-btn">Экспорт CSV</button></div>
+    </div>
+   </div>
+  </section>
+
+  <section id="connection" class="section"><div class="section-head"><div><span class="eyebrow">02 / ЛОКАЛЬНАЯ СЕТЬ</span><h2>Подключение к Bambu Lab</h2></div><span id="connectionBadge" class="status-pill offline">Не подключено</span></div>
+   <div class="two-cols"><div class="panel"><div class="field"><label for="model">Модель принтера</label><select id="model"><option>H2S</option><option>P2S</option><option>X2D</option></select></div>
+    <div class="fieldrow"><div class="field"><label for="host">IP принтера</label><input id="host" type="text" placeholder="192.168.1.120" autocomplete="off" spellcheck="false"></div><div class="field"><label for="serial">Серийный номер SN</label><input id="serial" type="text" placeholder="С экрана принтера" autocomplete="off" spellcheck="false"></div></div>
+    <div class="field"><label for="accessCode">LAN Access Code</label><input id="accessCode" type="password" placeholder="Код локального доступа" autocomplete="off"></div>
+    <div class="actions"><button id="connect" class="primary-btn">Подключиться</button><button id="disconnect" class="outline-btn">Отключиться</button></div>
+    <p class="helper">LAN Only и Developer Mode должны быть включены. Код передаётся только локальному мосту приложения и не сохраняется в истории.</p></div>
+    <div class="panel"><div class="panel-title">Телеметрия принтера</div><div class="details"><div><span>Состояние печати</span><strong id="gcodeState">—</strong></div><div><span>AMS статус</span><strong id="amsStatus">—</strong></div><div><span>Активный лоток</span><strong id="trayNow">—</strong></div><div><span>Давность ответа</span><strong id="telemetryAge">—</strong></div><div><span>Последняя команда</span><strong id="lastCommand">—</strong></div></div><p id="bridgeMessage" class="helper">Открой приложение с локального сервера на Windows для управления. Офлайн-расчёт доступен без подключения.</p></div>
+   </div>
+  </section>
+
+  <section id="experiment" class="section"><div class="section-head"><div><span class="eyebrow">03 / ЛАБОРАТОРНЫЙ РЕЖИМ</span><h2>Проверка штатной выгрузки</h2></div><span class="status-pill warning">Эксперимент</span></div>
+   <div class="panel lab"><div class="lab-header"><div class="lab-mark">!</div><div><strong>Не подключай спаянные катушки на первом тесте</strong><p>Эта операция отправляет единственную штатную команду «выгрузить филамент». Она не запускает длительную перемотку и не гарантирует движение катушки.</p></div></div>
+    <div class="fieldrow"><div class="field"><label for="unit">Номер AMS (начиная с 0)</label><select id="unit"><option value="0">AMS 0</option><option value="1">AMS 1</option><option value="2">AMS 2</option><option value="3">AMS 3</option></select></div><div class="field"><label for="slot">Слот AMS</label><select id="slot"><option value="0">1</option><option value="1">2</option><option value="2">3</option><option value="3">4</option></select></div></div>
+    <div class="field"><label for="unloadMethod">Штатный вариант команды</label><select id="unloadMethod"><option value="ams_change_filament">ams_change_filament (Bambu Studio)</option><option value="unload_filament">unload_filament (возможна несовместимость)</option></select></div>
+    <div class="checks"><label><input id="noSplice" type="checkbox"><span>Проверяю на одной обычной катушке, <b>без спайки</b> с внешней катушкой</span></label><label><input id="atPrinter" type="checkbox"><span>Нахожусь рядом с принтером, могу физически остановить процесс</span></label></div>
+    <div class="actions"><button id="unload" class="danger-btn" disabled>Отправить ОДНУ выгрузку</button><span class="quiet">Повторная отправка только вручную</span></div>
+    <p class="helper" id="unloadReason">Требуются подключение, свежая телеметрия, состояние IDLE/FINISH, активный слот AMS и два подтверждения.</p>
+    <div class="lab-footer">Важно: отключение MQTT не гарантирует остановку уже выполняемой механической операции. При заедании действуй по инструкции принтера; не оставляй механизм без наблюдения.</div>
+   </div>
+  </section>
+
+  <section id="history" class="section"><div class="section-head"><div><span class="eyebrow">04 / ПЛАНЫ И ЖУРНАЛ</span><h2>История операций</h2></div><button id="clearHistory" class="ghost-btn">Очистить планы</button></div><div class="panel"><div id="plans" class="plan-list"><p class="muted-small">Планы ещё не добавлены.</p></div><div class="divider"></div><div class="panel-title">События подключения</div><div id="events" class="events">Нет событий</div><p class="helper">Сохраняются только локальные планы (без IP, пароля и SN). События MQTT существуют лишь пока открыт сервер.</p></div></section>
+  <footer>AMS 2 PRO REWINDER · Open research prototype · Неофициальный проект, не связан с Bambu Lab.</footer>
+ </main>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+<script src="main.js" defer></script>
+</body></html>

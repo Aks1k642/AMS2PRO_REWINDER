@@ -1,0 +1,10 @@
+{
+  "name": "AMS 2 Pro Rewinder Lab",
+  "short_name": "AMS Rewinder",
+  "description": "Расчёт намотки и экспериментальная штатная выгрузка филамента",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#101015",
+  "theme_color": "#151319",
+  "icons": [{"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+}

@@ -58,9 +58,9 @@
 - Bambu Printer Manager MQTT reference: https://synman.github.io/bambu-printer-manager/mqtt-protocol-reference/
 - Open Bamboo Networking LAN instructions: https://github.com/ClusterM/open-bamboo-networking
 
-## Репозиторий и сборки
+## Публикация
 
-Исходный код и GitHub Actions: https://github.com/Aks1k642/AMS2PRO_REWINDER. Windows приложение и Android debug APK создаются через GitHub Actions; после успешной сборки файлы будут в Releases. Android клиенту нужен LAN-мост на Windows для управления принтером.
+Исходный код: https://github.com/Aks1k642/AMS2PRO_REWINDER. Экспериментальные сборки Windows и Android публикуются GitHub Actions в разделе Releases. Windows `.exe` включает локальный сервер; Android `.apk` — это мобильный интерфейс, которому для управления принтером необходим запущенный Windows-мост в той же LAN. Оба бинарника не являются подтверждённым решением для непрерывной перемотки.
 
 ## Лицензия
 

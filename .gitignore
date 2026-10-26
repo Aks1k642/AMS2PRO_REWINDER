@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.gradle/
+/build/
+.DS_Store
+*.iml
+.idea/
+local.properties
+.DIR/
