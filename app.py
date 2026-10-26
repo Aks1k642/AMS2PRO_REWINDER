@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 import secrets
 import socket
+import sys
 import threading
 import time
 import webbrowser
@@ -242,19 +243,107 @@ class Handler(SimpleHTTPRequestHandler):
             self._reply({"error": "Внутренняя ошибка; проверь журнал приложения"}, 500)
 
 
+DEFAULT_WEB_PORT = 8765
+
+
+def validate_web_port(value):
+    """HTTP port (not the printer MQTT port 8883)."""
+    try:
+        port = int(str(value).strip())
+    except (TypeError, ValueError):
+        raise ValueError("Порт должен быть целым числом от 1024 до 65535") from None
+    if not 1024 <= port <= 65535:
+        raise ValueError("Выбери порт от 1024 до 65535")
+    return port
+
+
+def _preferences_file():
+    base = os.environ.get("LOCALAPPDATA") if os.name == "nt" else None
+    root = Path(base) if base else Path.home() / ".config"
+    return root / "AMS2ProRewinder" / "settings.json"
+
+
+def load_web_port():
+    """Keep the last selected port, without saving access codes or secrets."""
+    try:
+        return validate_web_port(json.loads(_preferences_file().read_text(encoding="utf-8"))["port"])
+    except (OSError, ValueError, TypeError, KeyError):
+        return DEFAULT_WEB_PORT
+
+
+def save_web_port(port):
+    try:
+        path = _preferences_file()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"port": validate_web_port(port)}), encoding="utf-8")
+    except OSError as exc:
+        print("Не удалось сохранить выбранный порт:", exc)
+
+
+def open_web_server(host, explicit_port=None, *, interactive=False, automatic=False):
+    """Select the port before binding; retry locally if the chosen port is busy."""
+    candidate = load_web_port() if explicit_port is None else validate_web_port(explicit_port)
+    while True:
+        if interactive and explicit_port is None and not automatic:
+            try:
+                selected = input(
+                    f"Выбери порт веб-интерфейса [{candidate}] (Enter = оставить): "
+                ).strip()
+            except (EOFError, KeyboardInterrupt):
+                selected = ""
+            try:
+                candidate = validate_web_port(selected or candidate)
+            except ValueError as exc:
+                print(exc)
+                continue
+        try:
+            server = ThreadingHTTPServer((host, 0 if automatic else candidate), Handler)
+            return server, server.server_port
+        except OSError as exc:
+            if automatic:
+                raise RuntimeError("Не удалось выбрать свободный порт: " + str(exc)) from exc
+            if not interactive or explicit_port is not None:
+                raise RuntimeError(
+                    f"Порт {candidate} недоступен ({exc}). Выбери другой через --port 8899 "
+                    "или используй --auto-port."
+                ) from exc
+            print(f"Порт {candidate} занят или недоступен: {exc}")
+            candidate = 8766 if candidate >= 65535 else candidate + 1
+
+
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--host", default="127.0.0.1", help="Binding address, default localhost")
-    ap.add_argument("--port", type=int, default=8765)
+    ap = argparse.ArgumentParser(description="AMS 2 Pro Rewinder — LAN bridge and planner")
+    ap.add_argument("--host", default="127.0.0.1", help="127.0.0.1 (только ПК) или 0.0.0.0 (домашняя сеть)")
+    ap.add_argument("--port", type=int, default=None, help="Фиксированный порт веб-интерфейса, например 8899")
+    ap.add_argument("--auto-port", action="store_true", help="Автоматически выбрать свободный порт")
+    ap.add_argument("--no-port-prompt", action="store_true", help="Без запроса использовать последний выбранный порт")
     ap.add_argument("--no-browser", action="store_true")
     args = ap.parse_args()
-    if args.host != "127.0.0.1" and args.host != "localhost" and args.host != "0.0.0.0":
+    if args.host not in ("127.0.0.1", "localhost", "0.0.0.0"):
         ap.error("Bind only on 127.0.0.1 or 0.0.0.0")
-    server = ThreadingHTTPServer((args.host, args.port), Handler)
+    if args.port is not None and args.auto_port:
+        ap.error("--port и --auto-port нельзя использовать вместе")
+    if args.port is not None:
+        try:
+            validate_web_port(args.port)
+        except ValueError as exc:
+            ap.error(str(exc))
+
+    interactive = not args.no_port_prompt and not args.auto_port and sys.stdin is not None and sys.stdin.isatty()
+    try:
+        server, selected_port = open_web_server(
+            args.host, explicit_port=args.port, interactive=interactive, automatic=args.auto_port
+        )
+    except RuntimeError as exc:
+        raise SystemExit("Ошибка запуска: " + str(exc)) from None
+
+    if not args.auto_port:
+        save_web_port(selected_port)
     server.auth_token = secrets.token_urlsafe(24)
     endpoint_host = "127.0.0.1" if args.host == "0.0.0.0" else args.host
-    url = f"http://{endpoint_host}:{args.port}/#token={server.auth_token}"
+    url = f"http://{endpoint_host}:{selected_port}/#token={server.auth_token}"
     print("\nAMS 2 Pro Rewinder — локальное приложение\n")
+    print("Порт приложения:", selected_port)
     print("Открыть на ПК:", url)
     if args.host == "0.0.0.0":
         try:
@@ -263,7 +352,7 @@ def main():
                 lan_ip = s.getsockname()[0]
         except OSError:
             lan_ip = "<IP_ПК>"
-        print("Доступ с Android: http://%s:%s/#token=%s" % (lan_ip, args.port, server.auth_token))
+        print("Доступ с Android: http://%s:%s/#token=%s" % (lan_ip, selected_port, server.auth_token))
         print("ВНИМАНИЕ: доступ по HTTP для доверенной домашней LAN; не открывать в интернет.")
     if not args.no_browser:
         threading.Timer(.3, lambda: webbrowser.open(url)).start()
