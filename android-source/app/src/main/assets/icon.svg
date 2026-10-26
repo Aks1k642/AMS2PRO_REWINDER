@@ -1,1 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><rect width="128" height="128" rx="25" fill="#251723"/><circle cx="64" cy="64" r="41" fill="none" stroke="#db709b" stroke-width="14" stroke-dasharray="215 60" transform="rotate(-90 64 64)"/><circle cx="64" cy="64" r="15" fill="#db709b"/><path d="m88 86 14 17 9-19" fill="none" stroke="#ffe4ed" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="AMS Rewinder spool icon">
+<rect x="4" y="4" width="248" height="248" rx="49" fill="#101b22" stroke="#46616c" stroke-width="4"/>
+<rect x="16" y="16" width="224" height="224" rx="43" fill="none" stroke="#263c48" stroke-width="2"/>
+<ellipse cx="133" cy="141" rx="76" ry="77" fill="#080d14"/>
+<rect x="81" y="66" width="106" height="138" rx="15" fill="#1b3336" stroke="#749095" stroke-width="5"/>
+<rect x="92" y="84" width="81" height="105" rx="9" fill="#32e66e"/>
+<path d="M103 86V188M116 86V188M129 86V188M142 86V188M155 86V188M168 86V188" stroke="#0b9450" stroke-width="2"/>
+<ellipse cx="81" cy="135" rx="27" ry="69" fill="#283b43" stroke="#8ca0a6" stroke-width="6"/>
+<ellipse cx="81" cy="135" rx="10" ry="23" fill="#102128" stroke="#8ca0a6" stroke-width="4"/>
+<ellipse cx="187" cy="135" rx="17" ry="69" fill="#23353d" stroke="#8ca0a6" stroke-width="5"/>
+<path d="M52 60 A108 108 0 0 1 222 115" fill="none" stroke="#baffcb" stroke-width="11" stroke-linecap="round"/>
+<path d="M222 115l-1-29 22 14z" fill="#baffcb"/>
+<path d="M218 196A107 107 0 0 1 41 163" fill="none" stroke="#baffcb" stroke-width="10" stroke-linecap="round"/>
+</svg>
