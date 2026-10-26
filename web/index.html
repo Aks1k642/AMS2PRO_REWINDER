@@ -15,10 +15,10 @@
   <a href="#connection" class="navlink">◉ <span>Подключение к принтеру</span></a>
   <a href="#experiment" class="navlink">⌁ <span>Экспериментальная выгрузка</span></a>
   <a href="#history" class="navlink">▤ <span>История операций</span></a>
-  <div class="sidebar-bottom"><div class="dotline"><span id="sideDot" class="dot muted"></span><span id="sideStatus">Расчёт офлайн</span></div><p>Неофициальный исследовательский инструмент. Непрерывная перемотка не реализована.</p><small>v0.1.0 · H2S / P2S / X2D</small></div>
+  <div class="sidebar-bottom"><div class="dotline"><span id="sideDot" class="dot muted"></span><span id="sideStatus">Расчёт офлайн</span></div><p>Неофициальный исследовательский инструмент. Непрерывная перемотка не реализована.</p><small>v0.2.0 · H2S / P2S / X2D</small></div>
  </aside>
  <main class="main">
-  <header class="header"><div><div class="eyebrow">ПРОЕКТ / AMS 2 PRO</div><h1>Перемотка филамента <span class="text-dim">без догадок</span></h1><p>Оценка метража, заполнения катушки и контролируемый эксперимент с AMS.</p></div><span class="top-tag">RESEARCH BUILD <b>0.1.0</b></span></header>
+  <header class="header"><div><div class="eyebrow">ПРОЕКТ / AMS 2 PRO</div><h1>Перемотка филамента <span class="text-dim">без догадок</span></h1><p>Оценка метража, заполнения катушки и контролируемый эксперимент с AMS.</p></div><span class="top-tag">RESEARCH BUILD <b>0.2.0</b></span></header>
   <div class="notice"><strong>Важное ограничение</strong><p>AMS автоматически наматывает пруток при выгрузке, но публично подтверждённого режима непрерывного вращения на заданную массу нет. Приложение <b>не может</b> измерить фактическую намотку и не должно работать без оператора у принтера.</p></div>
 
   <section id="calculator" class="section">
@@ -41,11 +41,18 @@
   </section>
 
   <section id="connection" class="section"><div class="section-head"><div><span class="eyebrow">02 / ЛОКАЛЬНАЯ СЕТЬ</span><h2>Подключение к Bambu Lab</h2></div><span id="connectionBadge" class="status-pill offline">Не подключено</span></div>
-   <div class="two-cols"><div class="panel"><div class="field"><label for="model">Модель принтера</label><select id="model"><option>H2S</option><option>P2S</option><option>X2D</option></select></div>
-    <div class="fieldrow"><div class="field"><label for="host">IP принтера</label><input id="host" type="text" placeholder="192.168.1.120" autocomplete="off" spellcheck="false"></div><div class="field"><label for="serial">Серийный номер SN</label><input id="serial" type="text" placeholder="С экрана принтера" autocomplete="off" spellcheck="false"></div></div>
+   <div class="two-cols"><div class="panel">
+    <div class="panel-title">Автоматическое обнаружение принтеров</div>
+    <div class="actions"><button id="discover" class="outline-btn" type="button">Найти принтеры в сети</button></div>
+    <div class="field"><label for="devices">Доступные Bambu Lab</label><select id="devices"><option value="">Нажми «Найти принтеры»</option></select></div>
+    <p id="discoveryMessage" class="helper" role="status">Никаких серийных номеров вручную: приложение прочитает IP и идентификатор из сетевого объявления принтера.</p>
+    <div class="field"><label for="model">Модель принтера</label><select id="model"><option>H2S</option><option>P2S</option><option>X2D</option></select></div>
+    <details id="manualConnection"><summary>Ручное подключение (если поиск не сработал)</summary>
+      <div class="fieldrow"><div class="field"><label for="host">IP принтера</label><input id="host" type="text" placeholder="192.168.1.120" autocomplete="off" spellcheck="false"></div><div class="field"><label for="serial">Серийный номер SN</label><input id="serial" type="text" placeholder="С экрана принтера" autocomplete="off" spellcheck="false"></div></div>
+    </details>
     <div class="field"><label for="accessCode">LAN Access Code</label><input id="accessCode" type="password" placeholder="Код локального доступа" autocomplete="off"></div>
     <div class="actions"><button id="connect" class="primary-btn">Подключиться</button><button id="disconnect" class="outline-btn">Отключиться</button></div>
-    <p class="helper">LAN Only и Developer Mode должны быть включены. Код передаётся только локальному мосту приложения и не сохраняется в истории.</p></div>
+    <p class="helper">LAN Only и Developer Mode должны быть включены. Поиск использует локальный UDP 2021. Код передаётся только локальному мосту и не сохраняется в истории.</p></div>
     <div class="panel"><div class="panel-title">Телеметрия принтера</div><div class="details"><div><span>Состояние печати</span><strong id="gcodeState">—</strong></div><div><span>AMS статус</span><strong id="amsStatus">—</strong></div><div><span>Активный лоток</span><strong id="trayNow">—</strong></div><div><span>Давность ответа</span><strong id="telemetryAge">—</strong></div><div><span>Последняя команда</span><strong id="lastCommand">—</strong></div></div><p id="bridgeMessage" class="helper">Открой приложение с локального сервера на Windows для управления. Офлайн-расчёт доступен без подключения.</p></div>
    </div>
   </section>
