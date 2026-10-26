@@ -39,6 +39,39 @@
   $('exportCsv').addEventListener('click',exportCSV);
   $('clearHistory').addEventListener('click',()=>{if(confirm('Удалить все локальные планы?')){plans=[];savePlans();}});
   async function api(route,body){if(!token)throw Error('Нет токена локального сервера. Для управления запусти START_WINDOWS.cmd и открой выданную ссылку.');const c=new AbortController();const timer=setTimeout(()=>c.abort(),11000);try{const response=await fetch('/api/'+route,{method:body?'POST':'GET',headers:{'X-Session-Token':token,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),signal:c.signal,cache:'no-store'});const data=await response.json();if(!response.ok)throw Error(data.error||'HTTP '+response.status);return data;}finally{clearTimeout(timer);}}
+  async function discoverDevices(){
+    const button=$('discover'), selection=$('devices');
+    button.disabled=true;selection.replaceChildren();
+    const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Поиск в локальной сети…';selection.append(placeholder);
+    $('discoveryMessage').textContent='Слушаем объявления Bambu Lab на UDP 2021 (примерно 6 секунд)…';
+    try {
+      const result=await api('discover');
+      selection.replaceChildren();
+      const empty=document.createElement('option');empty.value='';empty.textContent='Выбери найденный принтер';selection.append(empty);
+      for(const device of result.devices||[]){
+        const option=document.createElement('option');
+        option.value=device.serial;
+        option.dataset.model=device.model||'';
+        option.textContent=(device.name||'Bambu Lab')+' · '+device.host+(device.model?' · '+device.model:' · модель не определена');
+        selection.append(option);
+      }
+      $('discoveryMessage').textContent=result.devices?.length
+        ?'Найдено: '+result.devices.length+'. Выбери принтер. Серийный номер подставится автоматически.'
+        :'Принтеры не найдены. Проверь общую сеть, UDP 2021 и закрытие Bambu Studio. Можно открыть ручной режим.';
+      if(result.devices?.length===1){selection.selectedIndex=1;selection.dispatchEvent(new Event('change'));}
+    } catch(error){
+      selection.replaceChildren();
+      const failed=document.createElement('option');failed.value='';failed.textContent='Не обнаружено';selection.append(failed);
+      $('discoveryMessage').textContent='Ошибка поиска: '+error.message;
+      toast('Поиск принтеров не удался: '+error.message,true);
+    } finally{button.disabled=false;}
+  }
+  $('discover').addEventListener('click',discoverDevices);
+  $('devices').addEventListener('change',()=>{
+    const selected=$('devices').selectedOptions[0];
+    if(selected?.dataset.model && ['H2S','P2S','X2D'].includes(selected.dataset.model))$('model').value=selected.dataset.model;
+    if($('devices').value)$('manualConnection').open=false;
+  });
   const stateLabel=s=>({RUNNING:'Печатает',PREPARE:'Подготовка',IDLE:'Ожидание',FINISH:'Завершено',FAILED:'Ошибка',PAUSE:'Пауза',STOP:'Остановлен'})[String(s||'').toUpperCase()]||s||'—';
   function updateStatus(data){lastState=data;const t=data.status||{},active=data.connected;
     $('connectionBadge').textContent=active?'Подключено':'Не подключено';$('connectionBadge').classList.toggle('offline',!active);
@@ -52,7 +85,10 @@
   }
   function validateUnload(){const s=lastState;const tray=Number($('unit').value)*4+Number($('slot').value);let problem='';if(!s?.connected)problem='Принтер не подключён.';else if(s.telemetry_age_s===null||s.telemetry_age_s>10)problem='Нет свежих данных от принтера.';else if(!['IDLE','FINISH'].includes(String(s.status?.gcode_state||'').toUpperCase()))problem='Принтер не в режиме ожидания.';else if(s.status?.ams_status==null||![0,3].includes((Number(s.status.ams_status)>>8)))problem='AMS занят или состояние AMS неизвестно.';else if(s.status?.ams?.tray_now==null)problem='Нет данных об активной катушке AMS.';else if(Number(s.status.ams.tray_now)!==tray)problem='Выбранный слот не является активным в тракте.';else if(!$('noSplice').checked||!$('atPrinter').checked)problem='Подтверди безопасные условия теста.';else problem='Один тестовый запрос разрешён. Никакой непрерывной перемотки.';$('unloadReason').textContent=problem;$('unload').disabled=problem!=='Один тестовый запрос разрешён. Никакой непрерывной перемотки.';}
   async function refresh(){if(!token){$('bridgeMessage').textContent='Автономный режим: расчёт работает. Для управления открой адрес из окна запущенного сервера Windows.';return;}try{const state=await api('status');updateStatus(state);$('bridgeMessage').textContent='Подключение выполняется локально через MQTTs:8883. Пароль хранится только в памяти процесса.';}catch(e){$('bridgeMessage').textContent='Сервер недоступен: '+e.message;lastState=null;validateUnload();}}
-  $('connect').addEventListener('click',async()=>{const button=$('connect');button.disabled=true;try{const cfg={model:$('model').value,host:$('host').value,serial:$('serial').value,access_code:$('accessCode').value};const result=await api('connect',cfg);$('accessCode').value='';updateStatus(result);toast('MQTT подключён. Проверяем телеметрию.');await refresh();}catch(e){toast(e.message,true);}finally{button.disabled=false;}});
+  $('connect').addEventListener('click',async()=>{const button=$('connect');button.disabled=true;try{const manual=$('manualConnection').open;const deviceId=$('devices').value;
+    if(!manual&&!deviceId)throw Error('Сначала нажми «Найти принтеры» и выбери устройство либо открой ручной режим.');
+    const cfg={model:$('model').value,access_code:$('accessCode').value,
+      ...(manual?{host:$('host').value,serial:$('serial').value}:{device_id:deviceId})};const result=await api('connect',cfg);$('accessCode').value='';updateStatus(result);toast('MQTT подключён. Проверяем телеметрию.');await refresh();}catch(e){toast(e.message,true);}finally{button.disabled=false;}});
   $('disconnect').addEventListener('click',async()=>{try{const result=await api('disconnect',{});updateStatus(result);toast('Подключение закрыто.');}catch(e){toast(e.message,true)}});
   $('unload').addEventListener('click',async()=>{validateUnload();if($('unload').disabled)return;
     if(!confirm('ТЕСТ НА ОДНОЙ КАТУШКЕ БЕЗ СПАЙКИ.\n\nОтправить ровно ОДНУ штатную команду выгрузки на принтер? Не гарантируется движение или автоматическая остановка.'))return;
@@ -60,5 +96,5 @@
   });
   ['unit','slot','noSplice','atPrinter'].forEach(id=>$(id).addEventListener('change',validateUnload));
   document.querySelectorAll('a.navlink').forEach(link=>link.addEventListener('click',e=>{e.preventDefault();document.querySelector(link.getAttribute('href'))?.scrollIntoView({behavior:'smooth'});document.querySelectorAll('a.navlink').forEach(x=>x.classList.toggle('active',x===link));}));
-  estimate();drawPlans();validateUnload();refresh();if(token)setInterval(refresh,3000);
+  estimate();drawPlans();validateUnload();refresh();if(!token){$('discover').disabled=true;$('discoveryMessage').textContent='Автономный режим: для поиска принтеров открой приложение через Windows LAN-мост.';}else{setInterval(refresh,3000);}
 })();
