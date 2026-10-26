@@ -96,5 +96,5 @@
   });
   ['unit','slot','noSplice','atPrinter'].forEach(id=>$(id).addEventListener('change',validateUnload));
   document.querySelectorAll('a.navlink').forEach(link=>link.addEventListener('click',e=>{e.preventDefault();document.querySelector(link.getAttribute('href'))?.scrollIntoView({behavior:'smooth'});document.querySelectorAll('a.navlink').forEach(x=>x.classList.toggle('active',x===link));}));
-  estimate();drawPlans();validateUnload();refresh();if(token)setInterval(refresh,3000);
+  estimate();drawPlans();validateUnload();refresh();if(!token){$('discover').disabled=true;$('discoveryMessage').textContent='Автономный режим: для поиска принтеров открой приложение через Windows LAN-мост.';}else{setInterval(refresh,3000);}
 })();
