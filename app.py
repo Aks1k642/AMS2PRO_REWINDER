@@ -20,6 +20,8 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler, ThreadingHTTPServe
 from urllib.parse import urlsplit
 from mqtt_client import MQTTClient, MQTTError
 from lan_discovery import discover_printers
+from credentials import CredentialVault
+from readiness import evaluate
 
 ROOT = Path(__file__).resolve().parent
 WEB_ROOT = ROOT / "web"
@@ -40,6 +42,9 @@ class Service:
         self.discovered = {}
         self.discovery_at = 0
         self.discovery_busy = False
+        self.vault = CredentialVault()
+        self.last_connection_error = None
+        self.last_unload_sent = None
 
     def discover(self):
         """Discover printers read-only; don't store their LAN codes."""
@@ -55,6 +60,7 @@ class Service:
             self.event("Поиск завершён: найдено " + str(len(devices)) + " устройств")
             return {"devices": [
                 {k: d[k] for k in ("serial", "host", "model", "model_code", "name", "connect_mode", "firmware")}
+                | {"saved_code": self.vault.saved(d["serial"])}
                 for d in devices],
                 "note": "Если устройств нет: убедись, что принтер и ПК в одной LAN, проверь UDP 2021 и Bambu Studio."}
         except RuntimeError as exc:
@@ -86,8 +92,12 @@ class Service:
                 self.last_status_time = time.monotonic()
             command = doc.get("command")
             if command in ("unload_filament", "ams_change_filament", "ams_control"):
-                self.last_command = {k: doc[k] for k in ("command", "result", "err_code", "reason", "sequence_id") if k in doc}
-                self.event("Ответ принтера: " + command + " / " + str(doc.get("result", "состояние не указано")))
+                reply = {k: doc[k] for k in ("command", "result", "err_code", "reason", "sequence_id") if k in doc}
+                if self.last_command and str(reply.get("sequence_id")) == str(self.last_command.get("sequence_id")):
+                    self.last_command = reply
+                    self.event("Ответ на запрос: " + command + " / " + str(doc.get("result", "без результата")))
+                else:
+                    self.event("Сторонний или устаревший ответ: " + command)
 
     def on_disconnect(self, reason):
         with self.lock:
@@ -119,7 +129,11 @@ class Service:
         else:
             host = str(cfg.get("host", "")).strip()
             serial = str(cfg.get("serial", "")).strip()
-        password = str(cfg.get("access_code", "")).strip()
+        password = str(cfg.get("access_code") or "").strip()
+        use_saved = bool(cfg.get("use_saved_code", True))
+        if not password and use_saved:
+            password = self.vault.get(serial) or ""
+        remember = bool(cfg.get("remember_code"))
         model = cfg.get("model")
         if model not in ("H2S", "P2S", "X2D"):
             raise ValueError("Выбери H2S, P2S или X2D")
@@ -134,81 +148,95 @@ class Service:
         if not (4 <= len(password) <= 64):
             raise ValueError("Введи LAN Access Code принтера")
         self.disconnect()
+        self.last_connection_error = None
         client = MQTTClient(host, password, serial, self.on_message, self.on_disconnect)
         try:
             client.connect()
         except Exception as exc:
-            raise ValueError("MQTT не подключён: " + str(exc)) from None
+            reason = str(exc)
+            if "Refused" in reason or "отказ" in reason.lower() or "Отказ" in reason:
+                explanation = "Проверь LAN Access Code, LAN Only и Developer Mode на принтере."
+            elif "timed out" in reason or "timeout" in reason.lower():
+                explanation = "Принтер не отвечает по MQTT 8883: проверь IP, Wi-Fi и LAN Mode."
+            else:
+                explanation = "Не удалось открыть LAN MQTT. Проверь сеть, код доступа и разрешения прошивки."
+            self.last_connection_error = explanation
+            raise ValueError(explanation) from None
         with self.lock:
             self.client = client
             self.connected = True
-            self.profile = {"host": host, "serial_masked": serial[:3] + "…" + serial[-3:], "model": model}
-            self.event("Подключён " + model + ". Ожидание телеметрии.")
+            self.last_unload_sent = None
+            self.last_command = None
+            self.profile = {"host": host, "serial_masked": serial[:3] + "…" + serial[-3:],
+                            "model": model, "saved_code": self.vault.saved(serial)}
+            self.event("MQTT подключён к " + model + ". Ожидание состояния AMS.")
+        if remember:
+            try:
+                self.vault.put(serial, password)
+                self.profile["saved_code"] = True
+                self.event("LAN Access Code сохранён в шифрованном хранилище Windows.")
+            except (OSError, RuntimeError, ValueError):
+                self.event("Не удалось сохранить код: шифрованное хранилище Windows недоступно.")
         return self.status()
+
+    def delete_saved_code(self, request):
+        serial = str(request.get("device_id") or (self.client.serial if self.client else "")).strip()
+        with self.lock:
+            if serial not in self.discovered and (not self.client or serial != self.client.serial):
+                raise ValueError("Нужно выбрать обнаруженный или подключённый принтер")
+        self.vault.delete(serial)
+        if self.profile and self.client and self.client.serial == serial:
+            self.profile["saved_code"] = False
+        self.event("Сохранённый код доступа удалён.")
+        return {"deleted": True, "saved_code": False}
+
+    def check_unload(self, request):
+        try:
+            unit, slot = int(request.get("unit", 0)), int(request.get("slot", 0))
+        except (TypeError, ValueError):
+            raise ValueError("Неверный номер AMS или слота")
+        if not (0 <= unit <= 3 and 0 <= slot <= 3):
+            raise ValueError("AMS должен быть 0–3, слот 1–4")
+        with self.lock:
+            return evaluate(bool(self.client and self.client.connected and self.connected),
+                            self.telemetry, self.last_status_time,
+                            selected_tray=unit * 4 + slot, last_sent=self.last_unload_sent)
 
     def status(self):
         with self.lock:
+            connected = bool(self.client and self.client.connected and self.connected)
             age = None if self.last_status_time == 0 else round(time.monotonic() - self.last_status_time, 1)
-            return {"connected": bool(self.client and self.client.connected and self.connected),
-                    "printer": self.profile, "status": self.telemetry.copy(),
+            ready = evaluate(connected, self.telemetry, self.last_status_time, last_sent=self.last_unload_sent)
+            return {"connected": connected, "printer": self.profile, "status": self.telemetry.copy(),
                     "telemetry_age_s": age, "last_command": self.last_command,
+                    "connection_error": self.last_connection_error,
+                    "readiness": ready, "vault_available": self.vault.available,
                     "events": list(self.events[-30:]),
                     "capabilities": {"one_shot_unload": True, "continuous_rewind": False, "mass_feedback": False}}
 
     def unload_one_shot(self, request):
-        """Only one user-initiated unload, never automatic repetition.
-
-        This is still experimental: firmware differences may reject the command and
-        there is no reliable automatic abort of the motor. The user must stand by.
-        """
+        """One manual, verified single unload command. Never spin AMS in a loop."""
         with self.lock:
             if request.get("confirm") != "Я НАХОЖУСЬ У ПРИНТЕРА":
-                raise ValueError("Требуется явное подтверждение присутствия у принтера")
+                raise ValueError("Подтверди, что находишься у принтера")
             if request.get("joined_spools") is not False:
-                raise ValueError("Первый эксперимент выполняется только БЕЗ соединения двух катушек")
-            if not self.client or not self.client.connected or not self.connected:
-                raise ValueError("Нет подключения")
-            if self.last_status_time == 0 or time.monotonic() - self.last_status_time > 10:
-                raise ValueError("Нет свежей телеметрии — команда заблокирована")
-            state = str(self.telemetry.get("gcode_state", "")).upper()
-            if state not in STATE_IDLE:
-                raise ValueError("Принтер не в безопасном состоянии ожидания (" + (state or "неизвестно") + ")")
-            ams_value = self.telemetry.get("ams_status")
-            try:
-                ams_mode = (int(str(ams_value), 0) if isinstance(ams_value, str) else int(ams_value)) >> 8
-            except (TypeError, ValueError):
-                raise ValueError("Состояние механизма AMS неизвестно — команда заблокирована")
-            if ams_mode not in (0, 3):
-                raise ValueError("AMS занят операцией (код " + str(ams_mode) + ")")
-            ams = self.telemetry.get("ams")
-            if not isinstance(ams, dict) or "tray_now" not in ams:
-                raise ValueError("Нет данных об активном AMS-слоте")
-            try:
-                tray_now = int(ams["tray_now"])
-                intended = int(request.get("slot"))
-                unit = int(request.get("unit", 0))
-            except (TypeError, ValueError):
-                raise ValueError("Проверь AMS и слот")
-            if not (0 <= unit <= 3 and 0 <= intended <= 3):
-                raise ValueError("Поддерживаются AMS 0–3 и слоты 1–4")
-            global_tray = unit * 4 + intended
-            if tray_now != global_tray:
-                raise ValueError("Текущий пруток не из выбранного слота AMS (tray_now=" + str(tray_now) + ")")
-            method = request.get("method", "ams_change_filament")
+                raise ValueError("Не используй спаянные катушки для пробной выгрузки")
+            readiness = self.check_unload(request)
+            if not readiness["ready"]:
+                blockers = "; ".join(x["message"] + ". " + x["action"] for x in readiness["blockers"])
+                raise ValueError("Команда заблокирована: " + blockers)
+            method = request.get("method", "unload_filament")
+            if method != "unload_filament":
+                raise ValueError("В v0.3.0 разрешена только штатная команда unload_filament без жёстко заданных температур")
             sequence = str(int(time.time() * 1000) % 100000000)
-            if method == "ams_change_filament":
-                msg = {"print": {"sequence_id": sequence, "command": "ams_change_filament", "ams_id": unit,
-                        "slot_id": 255, "target": 255, "soft_temp": 0, "tar_temp": 210, "curr_temp": 210}}
-            elif method == "unload_filament":
-                msg = {"print": {"sequence_id": sequence, "command": "unload_filament"}}
-            else:
-                raise ValueError("Неподдерживаемый тип штатной выгрузки")
+            msg = {"print": {"sequence_id": sequence, "command": "unload_filament"}}
             self.client.publish(msg)
-            self.last_command = {"command": msg["print"]["command"], "sequence_id": sequence,
+            self.last_unload_sent = time.monotonic()
+            self.last_command = {"command": "unload_filament", "sequence_id": sequence,
                                  "result": "sent_not_confirmed"}
-            self.event("Отправлен один запрос выгрузки: " + method + ". Результат ожидается.")
+            self.event("Один запрос штатной выгрузки отправлен; ожидаем подтверждения от принтера.")
             return {"sent": True, "sequence_id": sequence,
-                    "warning": "Команда отправлена, но выполнение и намотанная длина не подтверждены."}
+                    "warning": "Запрос передан в MQTT; физическая выгрузка не подтверждена."}
 
 
 service = Service()
@@ -263,7 +291,7 @@ class Handler(SimpleHTTPRequestHandler):
         api = self._api()
         if api == "done":
             return
-        if api not in ("/api/connect", "/api/disconnect", "/api/unload"):
+        if api not in ("/api/connect", "/api/disconnect", "/api/unload", "/api/check", "/api/forget-code"):
             return self._reply({"error": "Неизвестный API"}, 404)
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -274,6 +302,10 @@ class Handler(SimpleHTTPRequestHandler):
                 raise ValueError("Неверный формат")
             if api == "/api/connect":
                 result = service.connect(data)
+            elif api == "/api/check":
+                result = service.check_unload(data)
+            elif api == "/api/forget-code":
+                result = service.delete_saved_code(data)
             elif api == "/api/disconnect":
                 service.disconnect()
                 result = service.status()
