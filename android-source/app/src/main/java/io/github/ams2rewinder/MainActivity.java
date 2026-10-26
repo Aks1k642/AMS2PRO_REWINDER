@@ -32,7 +32,7 @@ public class MainActivity extends Activity {
     }
     private static boolean allowed(String url) {
         if(url.startsWith("file:///android_asset/")) return true;
-        try { Uri uri=Uri.parse(url); return "http".equals(uri.getScheme()) && privateV4(uri.getHost()) && uri.getPort()==8765; }
+        try { Uri uri=Uri.parse(url); return "http".equals(uri.getScheme()) && privateV4(uri.getHost()) && uri.getPort()>=1024 && uri.getPort()<=65535; }
         catch(Exception e) { return false; }
     }
     @Override public void onCreate(Bundle saved) {
@@ -40,7 +40,7 @@ public class MainActivity extends Activity {
         getWindow().setStatusBarColor(Color.rgb(21,19,25));getWindow().setNavigationBarColor(Color.rgb(21,19,25));
         LinearLayout layout=new LinearLayout(this);layout.setOrientation(LinearLayout.VERTICAL);layout.setBackgroundColor(Color.rgb(21,19,25));
         LinearLayout toolbar=new LinearLayout(this);toolbar.setOrientation(LinearLayout.HORIZONTAL);toolbar.setPadding(10,10,10,10);
-        address=new EditText(this);address.setSingleLine(true);address.setTextColor(Color.WHITE);address.setHintTextColor(0xffa99ba5);address.setTextSize(12);address.setHint("http://IP_ПК:8765/#token=...");
+        address=new EditText(this);address.setSingleLine(true);address.setTextColor(Color.WHITE);address.setHintTextColor(0xffa99ba5);address.setTextSize(12);address.setHint("http://IP_ПК:8899/#token=...");
         toolbar.addView(address,new LinearLayout.LayoutParams(0,55,1));
         Button open=new Button(this);open.setText("LAN");toolbar.addView(open);
         Button offline=new Button(this);offline.setText("Офлайн");toolbar.addView(offline);
@@ -50,7 +50,7 @@ public class MainActivity extends Activity {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         web.setWebViewClient(new WebViewClient(){
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request){
-                if(!allowed(request.getUrl().toString())){Toast.makeText(MainActivity.this,"Разрешён только адрес домашнего моста :8765",Toast.LENGTH_LONG).show();return true;}return false;
+                if(!allowed(request.getUrl().toString())){Toast.makeText(MainActivity.this,"Разрешён только адрес домашнего моста с портом 1024–65535",Toast.LENGTH_LONG).show();return true;}return false;
             }
         });
         layout.addView(web,new LinearLayout.LayoutParams(-1,0,1));setContentView(layout);
