@@ -19,6 +19,7 @@ import webbrowser
 from http.server import HTTPServer, SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 from mqtt_client import MQTTClient, MQTTError
+from lan_discovery import discover_printers
 
 ROOT = Path(__file__).resolve().parent
 WEB_ROOT = ROOT / "web"
@@ -36,6 +37,31 @@ class Service:
         self.last_command = None
         self.events = []
         self.connected = False
+        self.discovered = {}
+        self.discovery_at = 0
+        self.discovery_busy = False
+
+    def discover(self):
+        """Discover printers read-only; don't store their LAN codes."""
+        with self.lock:
+            if self.discovery_busy:
+                raise ValueError("Поиск принтеров уже выполняется")
+            self.discovery_busy = True
+        try:
+            devices = discover_printers(timeout=6)
+            with self.lock:
+                self.discovered = {d["serial"]: d for d in devices}
+                self.discovery_at = time.monotonic()
+            self.event("Поиск завершён: найдено " + str(len(devices)) + " устройств")
+            return {"devices": [
+                {k: d[k] for k in ("serial", "host", "model", "model_code", "name", "connect_mode", "firmware")}
+                for d in devices],
+                "note": "Если устройств нет: убедись, что принтер и ПК в одной LAN, проверь UDP 2021 и Bambu Studio."}
+        except RuntimeError as exc:
+            raise ValueError(str(exc)) from None
+        finally:
+            with self.lock:
+                self.discovery_busy = False
 
     def event(self, line):
         self.events.append({"at": time.strftime("%H:%M:%S"), "text": line})
@@ -79,8 +105,20 @@ class Service:
             self.event("Отключено")
 
     def connect(self, cfg):
-        host = str(cfg.get("host", "")).strip()
-        serial = str(cfg.get("serial", "")).strip()
+        device_id = str(cfg.get("device_id", "")).strip()
+        if device_id:
+            with self.lock:
+                entry = self.discovered.get(device_id)
+                if not entry or time.monotonic() - self.discovery_at > 180:
+                    raise ValueError("Принтер не найден в недавнем поиске. Нажми «Найти принтеры» снова.")
+                host, serial = entry["host"], entry["serial"]
+                detected_model = entry.get("model")
+            requested_model = cfg.get("model")
+            if detected_model and requested_model != detected_model:
+                raise ValueError("Модель не совпадает с обнаруженной (" + detected_model + ")")
+        else:
+            host = str(cfg.get("host", "")).strip()
+            serial = str(cfg.get("serial", "")).strip()
         password = str(cfg.get("access_code", "")).strip()
         model = cfg.get("model")
         if model not in ("H2S", "P2S", "X2D"):
@@ -212,6 +250,11 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if api == "/api/status":
             return self._reply(service.status())
+        if api == "/api/discover":
+            try:
+                return self._reply(service.discover())
+            except ValueError as exc:
+                return self._reply({"error": str(exc)}, 400)
         if api is not None:
             return self._reply({"error": "Неизвестный API"}, 404)
         return super().do_GET()
