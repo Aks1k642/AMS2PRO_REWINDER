@@ -2,14 +2,14 @@
 import time
 
 
-def _flag_number(value):
+def _flag_number(value, hexadecimal=False):
     if value is None:
         return None
     try:
         if isinstance(value, int):
             return value
         text = str(value).strip()
-        return int(text, 16) if text.startswith("0x") or any(c in "abcdefABCDEF" for c in text) else int(text)
+        return int(text, 16) if hexadecimal or text.startswith("0x") or any(c in "abcdefABCDEF" for c in text) else int(text)
     except (TypeError, ValueError):
         return None
 
@@ -39,7 +39,7 @@ def evaluate(connected, telemetry, last_seen, selected_tray=None, last_sent=None
         block("printer_state", "Состояние печати: " + (state or "неизвестно"),
               "Дождись завершения печати и перехода в ожидание.")
 
-    flags = _flag_number(telemetry.get("fun"))
+    flags = _flag_number(telemetry.get("fun"), hexadecimal=True)
     if flags is None:
         warn("control_unknown", "Разрешение LAN-команд не подтверждено телеметрией",
              "Проверь Developer Mode на принтере; MQTT-соединение само по себе не означает доступ к управлению.")
