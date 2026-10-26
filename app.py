@@ -45,6 +45,18 @@ class Service:
         self.vault = CredentialVault()
         self.last_connection_error = None
         self.last_unload_sent = None
+        self.last_pushall_sent = None
+
+    def refresh_telemetry(self):
+        with self.lock:
+            if not (self.client and self.client.connected and self.connected):
+                raise ValueError("Сначала подключись к принтеру по MQTT")
+            if self.last_pushall_sent is not None and time.monotonic()-self.last_pushall_sent < 5:
+                raise ValueError("Повторный запрос состояния доступен через 5 секунд")
+            self.client.publish({"pushing": {"sequence_id": "0", "command": "pushall"}})
+            self.last_pushall_sent = time.monotonic()
+            self.event("Запрошено полное состояние принтера; ожидаем телеметрию.")
+            return {"sent": True, "message": "Запрос отправлен, ожидаем ответ принтера"}
 
     def discover(self):
         """Discover printers read-only; don't store their LAN codes."""
@@ -291,7 +303,7 @@ class Handler(SimpleHTTPRequestHandler):
         api = self._api()
         if api == "done":
             return
-        if api not in ("/api/connect", "/api/disconnect", "/api/unload", "/api/check", "/api/forget-code"):
+        if api not in ("/api/connect", "/api/disconnect", "/api/unload", "/api/check", "/api/forget-code", "/api/refresh-status"):
             return self._reply({"error": "Неизвестный API"}, 404)
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -306,6 +318,8 @@ class Handler(SimpleHTTPRequestHandler):
                 result = service.check_unload(data)
             elif api == "/api/forget-code":
                 result = service.delete_saved_code(data)
+            elif api == "/api/refresh-status":
+                result = service.refresh_telemetry()
             elif api == "/api/disconnect":
                 service.disconnect()
                 result = service.status()
