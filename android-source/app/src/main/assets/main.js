@@ -156,6 +156,9 @@
     }
   }
   function updateStatus(data){
+    if(!data.connected || lastState?.printer?.serial_masked !== data.printer?.serial_masked || data.readiness?.stage==='waiting_status'){
+      lastCheck=null;
+    }
     lastState=data;const t=data.status||{},active=data.connected, ready=data.readiness||{};
     const stage=!active?'Не подключено':ready.stage==='waiting_status'?'Ожидание телеметрии':ready.stage==='ready'?'MQTT + AMS готовы':'Подключено · нужны действия';
     $('connectionBadge').textContent=stage;$('connectionBadge').classList.toggle('offline',!active);
@@ -202,7 +205,7 @@
     }catch(e){toast(e.message,true);}
     finally{button.disabled=false;}
   });
-  $('connect').addEventListener('click',async()=>{const button=$('connect');button.disabled=true;try{const manual=$('manualConnection').open;const deviceId=$('devices').value;
+  $('connect').addEventListener('click',async()=>{const button=$('connect');button.disabled=true;lastCheck=null;validateUnload();try{const manual=$('manualConnection').open;const deviceId=$('devices').value;
     if(!manual&&!deviceId)throw Error('Сначала нажми «Найти принтеры» и выбери устройство либо открой ручной режим.');
     const cfg={model:$('model').value,access_code:$('accessCode').value,
       remember_code:$('rememberCode').checked,use_saved_code:true,
