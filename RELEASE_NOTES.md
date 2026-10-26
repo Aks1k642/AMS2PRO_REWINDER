@@ -10,3 +10,7 @@ Experimental preview, **not officially supported by Bambu Lab**. Compatible prof
 **DO NOT connect two spools or use a splicer during initial tests.** There is no verified continuous winding, length feedback, torque protection, or guaranteed remote emergency stop. Stay physically at the printer for all motor tests. The debug APK is not Play Store signed.
 
 Release assets are built by GitHub Actions. The application has not been hardware-tested on H2S, P2S or X2D.
+
+### Улучшение запуска Windows
+
+При запуске приложения можно выбрать свободный HTTP-порт (последний выбор сохраняется); поддерживаются `--port 8899`, `--auto-port` и `--no-port-prompt`. Порт MQTT принтера (8883) не меняется.
